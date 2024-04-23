@@ -1,9 +1,9 @@
 import json
 import codecs
 import os
-import sys
+#import sys
 import time
-import traceback
+#import traceback
 import logging
 import win32con
 import win32evtlog

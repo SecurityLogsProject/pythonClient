@@ -1,6 +1,6 @@
 import get_logs
 import system_info
-from system_info import cpu_usage
+
 
 
 #pobieranie logów
@@ -10,11 +10,11 @@ logTypes = ["System", "Application", "Security", "Setup"] #Jakiego rodzaju logi 
 basePath = "./logtest" #folder zapisu logów
 output_format = 'json'  #format zapisu 'txt' lub 'json'
     
-# testowe4.getAllEvents(server, logTypes, basePath, output_format)
+ testowe4.getAllEvents(server, logTypes, basePath, output_format)
 #-----------------------------------------------------------------
 while True:
-        usage = cpu_usage()
-        for i, load in enumerate(usage):
-            print(f"CPU {i}: {load}% usage")
+        usage = system_info.cpu_usage()
+        for i in usage:
+            print(f"CPU {i}: % usage")
 
 
