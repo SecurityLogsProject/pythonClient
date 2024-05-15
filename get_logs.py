@@ -3,6 +3,7 @@ import codecs
 import os
 import time
 import logging
+import datetime
 import win32con
 import win32evtlog
 import win32evtlogutil
@@ -12,6 +13,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Konfiguracja logowania
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
@@ -37,8 +39,6 @@ def getEventLogs(server, logtype, logPath, format):
                 write_header(log, logtype)
             hand = win32evtlog.OpenEventLog(server, logtype)
             log_and_process_events(hand, log, flags, buffered_entries, buffer_size, logtype, format)
-            if format == 'json' and buffered_entries:
-                send_data_to_api(buffered_entries)
     except Exception as e:
         logging.error("Exception occurred:", exc_info=True)
 
@@ -56,6 +56,7 @@ def log_and_process_events(hand, log, flags, buffered_entries, buffer_size, logt
             buffered_entries.append(entry)
             if len(buffered_entries) >= buffer_size:
                 if format == 'json':
+                    buffered_entries = filter_events_by_time(buffered_entries)
                     send_data_to_api(buffered_entries)
                     buffered_entries = []
                 else:
@@ -64,6 +65,7 @@ def log_and_process_events(hand, log, flags, buffered_entries, buffer_size, logt
         events = win32evtlog.ReadEventLog(hand, flags, 0)
     if buffered_entries:
         if format == 'json':
+            buffered_entries = filter_events_by_time(buffered_entries)
             send_data_to_api(buffered_entries)
         else:
             log.write('\n'.join(buffered_entries))
@@ -96,14 +98,29 @@ def send_data_to_api(entries):
     url = os.getenv('URL')
     content = json.dumps(entries)
     data = {
-        "id": os.getenv('MACHINE_ID'),
+        "machineId": os.getenv('MACHINE_ID'),
         "content": content
     }
     headers = {
         'Authorization': f'Bearer {token}',
         'Content-Type': 'application/json'
     }
-    r = requests.post(url=url, data=json.dumps(data), headers=headers)
+    if (len(data.get("content")) > 2):
+        r = requests.post(url=url, data=json.dumps(data), headers=headers)
+
+
+def filter_events_by_time(events, minutes=60):
+    current_time = datetime.datetime.now()
+    filtered_events = []
+    for event in events:
+        try:
+            # Zmiana formatu na odpowiedni dla danych w logach
+            event_time = datetime.datetime.strptime(event["Event Date/Time"], '%a %b %d %H:%M:%S %Y')
+            if (current_time - event_time).total_seconds() / 60 <= minutes:
+                filtered_events.append(event)
+        except ValueError as e:
+            logging.error(f"Error parsing date: {e}")
+    return filtered_events
 
 
 if __name__ == "__main__":
