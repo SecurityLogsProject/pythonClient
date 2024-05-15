@@ -1,17 +1,19 @@
 import json
 import codecs
 import os
-#import sys
 import time
-#import traceback
 import logging
 import win32con
 import win32evtlog
 import win32evtlogutil
 import winerror
+import requests
+from dotenv import load_dotenv
 
-# Konfiguracja logowania
+load_dotenv()
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 
 def getAllEvents(server, logtypes, basePath, format='txt'):
     serverName = server if server else "localhost"
@@ -23,24 +25,28 @@ def getAllEvents(server, logtypes, basePath, format='txt'):
             path = os.path.join(basePath, f"{serverName}_{logtype}_log.txt")
         getEventLogs(serverName, logtype, path, format)
 
+
 def getEventLogs(server, logtype, logPath, format):
     logging.info(f"Logging {logtype} events in {format} format")
     buffered_entries = []
     buffer_size = 1000
     flags = win32evtlog.EVENTLOG_BACKWARDS_READ | win32evtlog.EVENTLOG_SEQUENTIAL_READ
-
     try:
         with codecs.open(logPath, 'w', 'utf-8') as log:
             if format == 'txt':
                 write_header(log, logtype)
             hand = win32evtlog.OpenEventLog(server, logtype)
             log_and_process_events(hand, log, flags, buffered_entries, buffer_size, logtype, format)
+            if format == 'json' and buffered_entries:
+                send_data_to_api(buffered_entries)
     except Exception as e:
         logging.error("Exception occurred:", exc_info=True)
+
 
 def write_header(log, logtype):
     header = f"\nLog of {logtype} Events\nCreated: {time.ctime()}\n\n{'-' * 80}\n"
     log.write(header)
+
 
 def log_and_process_events(hand, log, flags, buffered_entries, buffer_size, logtype, format):
     events = win32evtlog.ReadEventLog(hand, flags, 0)
@@ -50,7 +56,7 @@ def log_and_process_events(hand, log, flags, buffered_entries, buffer_size, logt
             buffered_entries.append(entry)
             if len(buffered_entries) >= buffer_size:
                 if format == 'json':
-                    json.dump(buffered_entries, log)
+                    send_data_to_api(buffered_entries)
                     buffered_entries = []
                 else:
                     log.write('\n'.join(buffered_entries))
@@ -58,9 +64,10 @@ def log_and_process_events(hand, log, flags, buffered_entries, buffer_size, logt
         events = win32evtlog.ReadEventLog(hand, flags, 0)
     if buffered_entries:
         if format == 'json':
-            json.dump(buffered_entries, log)
+            send_data_to_api(buffered_entries)
         else:
             log.write('\n'.join(buffered_entries))
+
 
 def format_event(ev_obj, logtype):
     evt_id = str(winerror.HRESULT_CODE(ev_obj.EventID))
@@ -83,11 +90,29 @@ def format_event(ev_obj, logtype):
     }
     return entry
 
+
+def send_data_to_api(entries):
+    token = os.getenv('TOKEN')
+    url = os.getenv('URL')
+    content = json.dumps(entries)
+    data = {
+        "id": os.getenv('MACHINE_ID'),
+        "content": content
+    }
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json'
+    }
+    r = requests.post(url=url, data=json.dumps(data), headers=headers)
+
+
 if __name__ == "__main__":
     server = None  # None = local machine
     logTypes = ["System", "Application", "Security", "Setup"]
     basePath = "./logtest"
     output_format = 'json'  # Could be 'txt' or 'json'
-    
     getAllEvents(server, logTypes, basePath, output_format)
-# This code allows the user to specify the output format ('txt' or 'json') when calling the function getAllEvents. The output format determines how the event logs are saved, either as plain text files or JSON files.
+# This code allows the user to specify the output format ('txt' or 'json')
+# when calling the function getAllEvents.
+# The output format determines how the event logs are saved,
+# either as plain text files or JSON files.
